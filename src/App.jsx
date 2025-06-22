@@ -1,59 +1,8 @@
-import { useState } from 'react';
-
+import { useState, useEffect } from 'react';
+import { getProducts } from './firebaseService';
 // Base de données des produits (simulée)
 const productsDatabase = [
-  {
-    id: 1,
-    name: "Canapé d'angle Milano",
-    reference: "CAN-MIL-001",
-    category: "canape",
-    price: "2 499 €",
-    images: [
-      "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&q=80",
-      "https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=800&q=80",
-      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80"
-    ],
-    description: "Canapé d'angle moderne en tissu premium avec coussins moelleux. Parfait pour votre salon contemporain."
-  },
-  {
-    id: 2,
-    name: "Table basse design Zen",
-    reference: "TAB-ZEN-002",
-    category: "table-basse",
-    price: "599 €",
-    images: [
-      "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&q=80",
-      "https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=800&q=80",
-      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80"
-    ],
-    description: "Table basse au design épuré en bois massif et métal. Alliant élégance et fonctionnalité."
-  },
-  {
-    id: 3,
-    name: "Fauteuil Barcelona",
-    reference: "FAU-BAR-003",
-    category: "fauteuil",
-    price: "1 299 €",
-    images: [
-      "https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=800&q=80",
-      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80",
-      "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&q=80"
-    ],
-    description: "Fauteuil iconique en cuir véritable. Un classique du design moderne."
-  },
-  {
-    id: 4,
-    name: "Lit coffre Stockholm",
-    reference: "LIT-STO-004",
-    category: "lit",
-    price: "1 899 €",
-    images: [
-      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80",
-      "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800&q=80",
-      "https://images.unsplash.com/photo-1567538096630-e0c55bd6374c?w=800&q=80"
-    ],
-    description: "Lit coffre avec tête de lit capitonnée. Rangement optimal et confort maximal."
-  }
+
 ];
 
 const categoryNames = {
@@ -73,7 +22,14 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [modalProduct, setModalProduct] = useState(null);
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const productsData = await getProducts();
+      setProducts(productsData);
+    };
 
+    fetchProducts();
+  }, []);
   const handleSearch = (e) => {
     setSearchTerm(e.target.value);
   };
