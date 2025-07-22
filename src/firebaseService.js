@@ -1,28 +1,36 @@
-import { db } from './firebase';
+import { db, storage } from './firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 export const getProducts = async () => {
-    try {
-        console.log("Tentative de connexion à Firestore...");
-        const colRef = collection(db, 'equipement');
-        console.log("Référence de collection obtenue:", colRef);
+    const querySnapshot = await getDocs(collection(db, 'equipement'));
+    return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    }));
+};
 
-        const querySnapshot = await getDocs(colRef);
-        console.log("Nombre de documents:", querySnapshot.size);
+export const uploadImageAndGetURL = async (file, progressCallback) => {
+    const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
 
-        const products = querySnapshot.docs.map(doc => {
-            console.log("Document ID:", doc.id);
-            return {
-                id: doc.id,
-                ...doc.data()
-            };
-        });
-
-        console.log("Produits transformés:", products);
-        return products;
-
-    } catch (error) {
-        console.error("ERREUR CRITIQUE dans getProducts:", error);
-        throw error;
-    }
+    return new Promise((resolve, reject) => {
+        uploadTask.on('state_changed',
+            (snapshot) => {
+                const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                if (progressCallback) progressCallback(progress);
+            },
+            (error) => {
+                reject(error);
+            },
+            async () => {
+                try {
+                    const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                    resolve(downloadURL);
+                } catch (error) {
+                    reject(error);
+                }
+            }
+        );
+    });
 };
