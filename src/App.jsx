@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { getProducts, uploadImageAndGetURL } from './firebaseService';
-import { collection, addDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { getProducts, uploadImageAndGetURL, updateProduct, deleteProduct, deleteProductImages } from './firebaseService';
+import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db, storage } from './firebase';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 
 const categoryNames = {
   salon: 'Salon',
@@ -14,7 +15,7 @@ const categoryNames = {
   'table-basse': 'Table Basse',
   decoration: 'Décoration',
 };
-// Composant pour afficher un produit dans la grille
+
 const ProductCard = ({ product, onClick, categoryNames }) => {
   return (
     <div className="col-lg-3 col-md-4 col-sm-6 mb-4">
@@ -54,7 +55,6 @@ const ProductCard = ({ product, onClick, categoryNames }) => {
   );
 };
 
-// Composant Modal pour afficher les détails du produit
 const ProductModal = ({ product, onClose, categoryNames }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [enlarged, setEnlarged] = useState(false);
@@ -193,13 +193,9 @@ const ProductModal = ({ product, onClose, categoryNames }) => {
         </div>
       )}
     </div>
-
   );
-
-
 };
 
-// Composant AdminPanel pour ajouter/modifier des produits
 const AdminPanel = ({
   newProduct,
   handleInputChange,
@@ -207,14 +203,69 @@ const AdminPanel = ({
   handleSubmit,
   categoryNames,
   uploadProgress,
-  onCancel
+  onCancel,
+  editingProduct,
+  setEditingProduct,
+  handleDeleteProduct,
+  products
 }) => {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleEditProduct = (product) => {
+    setEditingProduct({
+      ...product,
+      images: [...product.images, '', '', ''].slice(0, 4)
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProduct(null);
+    onCancel();
+  };
+
   return (
     <div className="container-fluid py-4">
       <div className="card shadow">
-        <div className="card-header bg-dark text-white">
-          <h5 className="mb-0">Ajouter un nouveau produit</h5>
+        <div className="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+          <h5 className="mb-0">
+            {editingProduct ? 'Modifier le produit' : 'Ajouter un nouveau produit'}
+          </h5>
+          {editingProduct && (
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <i className="fas fa-trash me-1"></i> Supprimer
+            </button>
+          )}
         </div>
+
+        {confirmDelete && (
+          <div className="card-body bg-light">
+            <div className="alert alert-warning">
+              <h5>Confirmer la suppression</h5>
+              <p>Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible.</p>
+              <div className="d-flex justify-content-end gap-2">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => {
+                    handleDeleteProduct(editingProduct.id);
+                    setConfirmDelete(false);
+                  }}
+                >
+                  Confirmer la suppression
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="card-body">
           <form onSubmit={handleSubmit}>
             <div className="row g-4">
@@ -360,7 +411,7 @@ const AdminPanel = ({
               <button
                 type="button"
                 className="btn btn-outline-secondary"
-                onClick={onCancel}
+                onClick={handleCancelEdit}
               >
                 Annuler
               </button>
@@ -375,19 +426,70 @@ const AdminPanel = ({
                     Envoi en cours...
                   </>
                 ) : (
-                  'Ajouter le produit'
+                  editingProduct ? 'Mettre à jour' : 'Ajouter le produit'
                 )}
               </button>
             </div>
           </form>
         </div>
       </div>
+
+      <div className="card shadow mt-4">
+        <div className="card-header bg-dark text-white">
+          <h5 className="mb-0">Liste des produits</h5>
+        </div>
+        <div className="card-body">
+          <div className="table-responsive">
+            <table className="table table-hover">
+              <thead>
+                <tr>
+                  <th>Image</th>
+                  <th>Nom</th>
+                  <th>Référence</th>
+                  <th>Catégorie</th>
+                  <th>Prix</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map(product => (
+                  <tr key={product.id}>
+                    <td>
+                      {product.images?.[0] ? (
+                        <img
+                          src={product.images[0]}
+                          alt={product.name}
+                          style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div className="bg-light" style={{ width: '50px', height: '50px' }}>
+                          <i className="fas fa-image text-muted"></i>
+                        </div>
+                      )}
+                    </td>
+                    <td>{product.name}</td>
+                    <td>{product.reference}</td>
+                    <td>{categoryNames[product.category] || product.category}</td>
+                    <td>{product.price}</td>
+                    <td>
+                      <button
+                        className="btn btn-sm btn-outline-primary me-2"
+                        onClick={() => handleEditProduct(product)}
+                      >
+                        <i className="fas fa-edit"></i>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
-// Composant Sidebar
-// Composant Sidebar révisé pour correspondre à l'image
 const Sidebar = ({ activeCategory, onCategoryChange, onAdminToggle, showAdmin }) => {
   return (
     <div className="d-flex flex-column flex-shrink-0 p-3" style={{
@@ -441,8 +543,6 @@ const Sidebar = ({ activeCategory, onCategoryChange, onAdminToggle, showAdmin })
   );
 };
 
-
-// Composant principal App
 const App = () => {
   const [products, setProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -460,8 +560,8 @@ const App = () => {
     price: '0 DH',
     images: ['', '', '', '']
   });
+  const [editingProduct, setEditingProduct] = useState(null);
 
-  // Charger les produits
   useEffect(() => {
     const loadProducts = async () => {
       try {
@@ -474,7 +574,6 @@ const App = () => {
     loadProducts();
   }, []);
 
-  // Filtrer les produits
   const filteredProducts = products.filter(product => {
     const matchesCategory = activeCategory === 'all' || product.category === activeCategory;
     const matchesSearch = product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -482,12 +581,10 @@ const App = () => {
     return matchesCategory && matchesSearch;
   });
 
-  // Gestion de l'upload d'images
   const handleImageUpload = async (index, file) => {
     if (!file) return;
 
     try {
-      // Mise à jour de la progression
       const progressCallback = (progress) => {
         setUploadProgress(prev => {
           const newProgress = [...prev];
@@ -503,7 +600,6 @@ const App = () => {
         images: prev.images.map((img, i) => i === index ? url : img)
       }));
 
-      // Réinitialiser la progression
       setUploadProgress(prev => {
         const newProgress = [...prev];
         newProgress[index] = 0;
@@ -515,7 +611,6 @@ const App = () => {
     }
   };
 
-  // Gestion de la soumission du formulaire
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -525,16 +620,23 @@ const App = () => {
     }
 
     try {
-      const productToAdd = {
+      const productToSave = {
         ...newProduct,
         images: newProduct.images.filter(img => img)
       };
 
-      const docRef = await addDoc(collection(db, 'equipement'), productToAdd);
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, productToSave);
+        setProducts(prev => prev.map(p =>
+          p.id === editingProduct.id ? { ...p, ...productToSave } : p
+        ));
+        alert("Produit mis à jour avec succès !");
+      } else {
+        const docRef = await addDoc(collection(db, 'equipement'), productToSave);
+        setProducts(prev => [...prev, { id: docRef.id, ...productToSave }]);
+        alert("Produit ajouté avec succès !");
+      }
 
-      setProducts(prev => [...prev, { id: docRef.id, ...productToAdd }]);
-
-      // Réinitialiser le formulaire
       setNewProduct({
         name: '',
         category: '',
@@ -545,15 +647,51 @@ const App = () => {
         price: '0 DH',
         images: ['', '', '', '']
       });
-
-      alert("Produit ajouté avec succès !");
+      setEditingProduct(null);
     } catch (error) {
-      console.error("Erreur d'ajout:", error);
-      alert("Une erreur est survenue lors de l'ajout du produit");
+      console.error("Erreur:", error);
+      alert(`Une erreur est survenue lors de ${editingProduct ? 'la mise à jour' : 'l\'ajout'} du produit`);
     }
   };
 
-  // Gestion des changements de champ
+  const handleDeleteProduct = async (productId) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
+      return;
+    }
+
+    try {
+      const productToDelete = products.find(p => p.id === productId);
+      if (productToDelete?.images) {
+        await deleteProductImages(productToDelete.images);
+      }
+
+      await deleteProduct(productId);
+      setProducts(prev => prev.filter(p => p.id !== productId));
+      setEditingProduct(null);
+
+      alert("Produit supprimé avec succès !");
+    } catch (error) {
+      console.error("Erreur lors de la suppression:", error);
+      alert("Une erreur est survenue lors de la suppression du produit");
+    }
+  };
+
+  useEffect(() => {
+    if (editingProduct) {
+      setNewProduct({
+        name: editingProduct.name,
+        category: editingProduct.category,
+        subcategory: editingProduct.subcategory || '',
+        reference: editingProduct.reference,
+        dimension: editingProduct.dimension || '',
+        description: editingProduct.description,
+        price: editingProduct.price,
+        images: [...editingProduct.images, '', '', ''].slice(0, 4)
+      });
+      setShowAdmin(true);
+    }
+  }, [editingProduct]);
+
   const handleInputChange = (field, value) => {
     setNewProduct(prev => ({
       ...prev,
@@ -568,8 +706,12 @@ const App = () => {
         onCategoryChange={(category) => {
           setActiveCategory(category);
           setShowAdmin(false);
+          setEditingProduct(null);
         }}
-        onAdminToggle={() => setShowAdmin(!showAdmin)}
+        onAdminToggle={() => {
+          setShowAdmin(!showAdmin);
+          setEditingProduct(null);
+        }}
         showAdmin={showAdmin}
       />
 
@@ -582,7 +724,23 @@ const App = () => {
             handleSubmit={handleSubmit}
             categoryNames={categoryNames}
             uploadProgress={uploadProgress}
-            onCancel={() => setShowAdmin(false)}
+            onCancel={() => {
+              setEditingProduct(null);
+              setNewProduct({
+                name: '',
+                category: '',
+                subcategory: '',
+                reference: '',
+                dimension: '',
+                description: '',
+                price: '0 DH',
+                images: ['', '', '', '']
+              });
+            }}
+            editingProduct={editingProduct}
+            setEditingProduct={setEditingProduct}
+            handleDeleteProduct={handleDeleteProduct}
+            products={products}
           />
         ) : (
           <>
@@ -641,7 +799,8 @@ const App = () => {
               )}
             </div>
           </>
-        )}
+        )
+        }
 
         {selectedProduct && (
           <ProductModal
